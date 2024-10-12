@@ -63,6 +63,66 @@ https://www.kaggle.com/datasets/lorenzozoppelletto/financial-risk-for-loan-appro
 
 ## Setup
 
+### Prerequisites
+- Python 3.8+
+- pip
+- AWS CLI configured with your credentials
+
+### Pipenv Setup
+
+1. Install Pipenv if you haven't already:
+   ```bash
+   pip install pipenv
+   ```
+
+2. Clone the repository and navigate to the project directory:
+   ```bash
+   git clone https://github.com/your-username/financial-risk-loan-approval-etl.git
+   cd financial-risk-loan-approval-etl
+   ```
+
+3. Create a virtual environment and install dependencies:
+   ```bash
+   pipenv install
+   ```
+
+4. Activate the virtual environment:
+   ```bash
+   pipenv shell
+   ```
+
+5. Install project dependencies:
+   ```bash
+   pipenv install pyspark boto3
+   ```
+
+### AWS and Docker Setup
+
+1. Configure AWS CLI (if not already done):
+   ```bash
+   aws configure
+   ```
+
+2. Build the Docker image:
+   ```bash
+   docker build -t loan-approval-etl .
+   ```
+
+### Running the ETL Job
+
+To run the ETL job using Pipenv:
+
+```bash
+pipenv run python src/main.py
+```
+
+To run the ETL job using Docker:
+
+```bash
+docker run loan-approval-etl
+```
+
+## Notes
 ```bash
 chmod +x setup.sh
 ./setup.sh
