@@ -1,13 +1,9 @@
-from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, when, datediff, current_date, year, lit, udf
 from pyspark.sql.types import StringType, FloatType
 import boto3
+from utils import spark
 
-# Initialize Spark Session
-spark = SparkSession.builder \
-    .appName("LoanApprovalETL") \
-    .config("spark.jars.packages", "org.apache.hadoop:hadoop-aws:3.2.0") \
-    .getOrCreate()
+
 
 # Set up AWS credentials (make sure you've configured AWS CLI)
 spark.sparkContext._jsc.hadoopConfiguration().set("fs.s3a.aws.credentials.provider", "com.amazonaws.auth.DefaultAWSCredentialsProviderChain")
