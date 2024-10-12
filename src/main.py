@@ -55,7 +55,7 @@ class Transformer:
 
         # Calculate LoanToIncomeRatio
         df = df.withColumn('LoanToIncomeRatio', col('LoanAmount') / col('AnnualIncome'))
-        
+
         # Convert LoanDuration to years
         df = df.withColumn('LoanDurationYears', col('LoanDuration') / 12)
         # Calculate new RiskScore
@@ -66,6 +66,31 @@ class Transformer:
 
         return df
 
+class Loader:
+    def __init__(self):
+        pass
+
+    def load_to_s3(self, df, bucket_name, file_name):
+        df.write.parquet(f"s3a://{bucket_name}/{file_name}", mode="overwrite")
+
+    def load_to_redshift(self, df, table_name):
+        # You'll need to set up the Redshift connection properties
+        redshift_properties = {
+            "url": "jdbc:redshift://your-redshift-cluster:5439/dev",
+            "user": "your_username",
+            "password": "your_password",
+            "driver": "com.amazon.redshift.jdbc42.Driver"
+        }
+
+        df.write \
+            .format("jdbc") \
+            .option("url", redshift_properties["url"]) \
+            .option("dbtable", table_name) \
+            .option("user", redshift_properties["user"]) \
+            .option("password", redshift_properties["password"]) \
+            .option("driver", redshift_properties["driver"]) \
+            .mode("overwrite") \
+            .save()
 
 
 
@@ -101,28 +126,6 @@ def validate_data(df):
 
     return df
 
-# Load
-def load_to_s3(df, bucket_name, file_name):
-    df.write.parquet(f"s3a://{bucket_name}/{file_name}", mode="overwrite")
-
-def load_to_redshift(df, table_name):
-    # You'll need to set up the Redshift connection properties
-    redshift_properties = {
-        "url": "jdbc:redshift://your-redshift-cluster:5439/dev",
-        "user": "your_username",
-        "password": "your_password",
-        "driver": "com.amazon.redshift.jdbc42.Driver"
-    }
-
-    df.write \
-        .format("jdbc") \
-        .option("url", redshift_properties["url"]) \
-        .option("dbtable", table_name) \
-        .option("user", redshift_properties["user"]) \
-        .option("password", redshift_properties["password"]) \
-        .option("driver", redshift_properties["driver"]) \
-        .mode("overwrite") \
-        .save()
 
 # Main ETL function
 def run_etl():
