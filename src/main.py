@@ -3,61 +3,71 @@ from pyspark.sql.types import StringType, FloatType
 import boto3
 from utils import spark
 
+class Extractor:
+    def __init__(self):
+        pass
+
+    def extract_data_from_local(self, file_path):
+        df = spark.read.csv(file_path, header=True, inferSchema=True)
+        return df
+
+    def extract_data_from_s3(self, bucket_name, file_name):
+        # Set up AWS credentials (make sure you've configured AWS CLI)
+        spark.sparkContext._jsc.hadoopConfiguration().set("fs.s3a.aws.credentials.provider", "com.amazonaws.auth.DefaultAWSCredentialsProviderChain")
+        df = spark.read.csv(f"s3a://{bucket_name}/{file_name}", header=True, inferSchema=True)
+        return df
+
+class Transformer:
+    def __init__(self):
+        pass
+
+    def clean_data(self, df):
+
+        # Handle missing values
+        df = df.na.fill({
+            'CreditScore': df.select('CreditScore').summary().collect()[1]['CreditScore'],
+            'AnnualIncome': df.select('AnnualIncome').summary().collect()[1]['AnnualIncome'],
+            'LoanAmount': df.select('LoanAmount').summary().collect()[1]['LoanAmount'],
+            'EmploymentStatus': 'Unknown',
+            'EducationLevel': 'Unknown'
+        })
+
+        # Convert ApplicationDate to DateTime
+        df = df.withColumn('ApplicationDate', col('ApplicationDate').cast('date'))
+
+        return df
+
+    def enrich_data(self, df):
+        # Create Age Groups
+        df = df.withColumn('AgeGroup',
+            when(col('Age') < 31, '18-30')
+            .when((col('Age') >= 31) & (col('Age') <= 50), '31-50')
+            .otherwise('51+'))
+
+        # Calculate DebtToAssetRatio
+        df = df.withColumn('DebtToAssetRatio', col('TotalLiabilities') / col('TotalAssets'))
+
+        # Create CreditUtilizationRisk
+        df = df.withColumn('CreditUtilizationRisk',
+            when(col('CreditCardUtilizationRate') < 0.3, 'Low')
+            .when((col('CreditCardUtilizationRate') >= 0.3) & (col('CreditCardUtilizationRate') < 0.7), 'Moderate')
+            .otherwise('High'))
+
+        # Calculate LoanToIncomeRatio
+        df = df.withColumn('LoanToIncomeRatio', col('LoanAmount') / col('AnnualIncome'))
+        
+        # Convert LoanDuration to years
+        df = df.withColumn('LoanDurationYears', col('LoanDuration') / 12)
+        # Calculate new RiskScore
+        df = df.withColumn('RiskScore',
+            (col('CreditScore') * 0.4) +
+            ((1 - col('DebtToIncomeRatio')) * 100 * 0.4) +
+            ((5 - col('PreviousLoanDefaults')) * 20 * 0.2))
+
+        return df
 
 
-# Set up AWS credentials (make sure you've configured AWS CLI)
-spark.sparkContext._jsc.hadoopConfiguration().set("fs.s3a.aws.credentials.provider", "com.amazonaws.auth.DefaultAWSCredentialsProviderChain")
 
-# Extract
-def extract_data(bucket_name, file_name):
-    df = spark.read.csv(f"s3a://{bucket_name}/{file_name}", header=True, inferSchema=True)
-    return df
-
-# Transform
-def clean_data(df):
-    # Handle missing values
-    df = df.na.fill({
-        'CreditScore': df.select('CreditScore').summary().collect()[1]['CreditScore'],
-        'AnnualIncome': df.select('AnnualIncome').summary().collect()[1]['AnnualIncome'],
-        'LoanAmount': df.select('LoanAmount').summary().collect()[1]['LoanAmount'],
-        'EmploymentStatus': 'Unknown',
-        'EducationLevel': 'Unknown'
-    })
-
-    # Convert ApplicationDate to DateTime
-    df = df.withColumn('ApplicationDate', col('ApplicationDate').cast('date'))
-
-    return df
-
-def enrich_data(df):
-    # Create Age Groups
-    df = df.withColumn('AgeGroup',
-        when(col('Age') < 31, '18-30')
-        .when((col('Age') >= 31) & (col('Age') <= 50), '31-50')
-        .otherwise('51+'))
-
-    # Calculate DebtToAssetRatio
-    df = df.withColumn('DebtToAssetRatio', col('TotalLiabilities') / col('TotalAssets'))
-
-    # Create CreditUtilizationRisk
-    df = df.withColumn('CreditUtilizationRisk',
-        when(col('CreditCardUtilizationRate') < 0.3, 'Low')
-        .when((col('CreditCardUtilizationRate') >= 0.3) & (col('CreditCardUtilizationRate') < 0.7), 'Moderate')
-        .otherwise('High'))
-
-    # Calculate LoanToIncomeRatio
-    df = df.withColumn('LoanToIncomeRatio', col('LoanAmount') / col('AnnualIncome'))
-
-    # Convert LoanDuration to years
-    df = df.withColumn('LoanDurationYears', col('LoanDuration') / 12)
-
-    # Calculate new RiskScore
-    df = df.withColumn('RiskScore',
-        (col('CreditScore') * 0.4) +
-        ((1 - col('DebtToIncomeRatio')) * 100 * 0.4) +
-        ((5 - col('PreviousLoanDefaults')) * 20 * 0.2))
-
-    return df
 
 def aggregate_data(df):
     # Create Risk Buckets
