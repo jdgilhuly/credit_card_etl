@@ -93,7 +93,7 @@ https://www.kaggle.com/datasets/lorenzozoppelletto/financial-risk-for-loan-appro
 
 5. Install project dependencies:
    ```bash
-   pipenv install pyspark boto3
+   pipenv install --dev
    ```
 
 ### AWS and Docker Setup

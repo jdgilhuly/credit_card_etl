@@ -1,8 +1,0 @@
-pyspark==3.3.2
-boto3==1.26.90
-pandas==1.5.3
-numpy==1.23.5
-pyarrow==11.0.0
-sqlalchemy==2.0.9
-psycopg2-binary==2.9.6
-awswrangler==3.0.0
