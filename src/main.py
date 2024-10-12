@@ -58,6 +58,7 @@ class Transformer:
 
         # Convert LoanDuration to years
         df = df.withColumn('LoanDurationYears', col('LoanDuration') / 12)
+
         # Calculate new RiskScore
         df = df.withColumn('RiskScore',
             (col('CreditScore') * 0.4) +
@@ -65,6 +66,41 @@ class Transformer:
             ((5 - col('PreviousLoanDefaults')) * 20 * 0.2))
 
         return df
+
+    def aggregate_data(self, df):
+
+        # Create Risk Buckets
+        df = df.withColumn('RiskBucket',
+            when(col('RiskScore') >= 80, 'Low Risk')
+            .when((col('RiskScore') >= 50) & (col('RiskScore') < 80), 'Moderate Risk')
+            .otherwise('High Risk'))
+
+        # Summarize Loan Defaults
+        loan_defaults = df.groupBy('AgeGroup', 'EmploymentStatus') \
+            .agg({'PreviousLoanDefaults': 'sum', 'LoanAmount': 'avg'}) \
+            .withColumnRenamed('sum(PreviousLoanDefaults)', 'TotalDefaults') \
+            .withColumnRenamed('avg(LoanAmount)', 'AvgLoanAmount')
+
+        # Calculate aggregate metrics
+        agg_metrics = df.groupBy('AgeGroup', 'EmploymentStatus', 'EducationLevel') \
+            .agg({'MonthlyDebtPayments': 'avg', 'LoanAmount': 'avg'}) \
+            .withColumnRenamed('avg(MonthlyDebtPayments)', 'AvgMonthlyDebtPayments') \
+            .withColumnRenamed('avg(LoanAmount)', 'AvgLoanAmount')
+
+        return df, loan_defaults, agg_metrics
+
+    def validate_data(self, df):
+        # Flag high DebtToIncomeRatio and LoanToIncomeRatio
+        df = df.withColumn('HighDebtToIncomeRatio', col('DebtToIncomeRatio') > 0.5)
+        df = df.withColumn('HighLoanToIncomeRatio', col('LoanToIncomeRatio') > 0.5)
+
+        # Validate LoanAmount and MonthlyLoanPayment consistency
+        df = df.withColumn('LoanAmountConsistent',
+            (col('LoanAmount') / col('LoanDuration')) >= col('MonthlyLoanPayment'))
+
+        return df
+
+
 
 class Loader:
     def __init__(self):
@@ -74,6 +110,7 @@ class Loader:
         df.write.parquet(f"s3a://{bucket_name}/{file_name}", mode="overwrite")
 
     def load_to_redshift(self, df, table_name):
+
         # You'll need to set up the Redshift connection properties
         redshift_properties = {
             "url": "jdbc:redshift://your-redshift-cluster:5439/dev",
@@ -93,56 +130,22 @@ class Loader:
             .save()
 
 
-
-def aggregate_data(df):
-    # Create Risk Buckets
-    df = df.withColumn('RiskBucket',
-        when(col('RiskScore') >= 80, 'Low Risk')
-        .when((col('RiskScore') >= 50) & (col('RiskScore') < 80), 'Moderate Risk')
-        .otherwise('High Risk'))
-
-    # Summarize Loan Defaults
-    loan_defaults = df.groupBy('AgeGroup', 'EmploymentStatus') \
-        .agg({'PreviousLoanDefaults': 'sum', 'LoanAmount': 'avg'}) \
-        .withColumnRenamed('sum(PreviousLoanDefaults)', 'TotalDefaults') \
-        .withColumnRenamed('avg(LoanAmount)', 'AvgLoanAmount')
-
-    # Calculate aggregate metrics
-    agg_metrics = df.groupBy('AgeGroup', 'EmploymentStatus', 'EducationLevel') \
-        .agg({'MonthlyDebtPayments': 'avg', 'LoanAmount': 'avg'}) \
-        .withColumnRenamed('avg(MonthlyDebtPayments)', 'AvgMonthlyDebtPayments') \
-        .withColumnRenamed('avg(LoanAmount)', 'AvgLoanAmount')
-
-    return df, loan_defaults, agg_metrics
-
-def validate_data(df):
-    # Flag high DebtToIncomeRatio and LoanToIncomeRatio
-    df = df.withColumn('HighDebtToIncomeRatio', col('DebtToIncomeRatio') > 0.5)
-    df = df.withColumn('HighLoanToIncomeRatio', col('LoanToIncomeRatio') > 0.5)
-
-    # Validate LoanAmount and MonthlyLoanPayment consistency
-    df = df.withColumn('LoanAmountConsistent',
-        (col('LoanAmount') / col('LoanDuration')) >= col('MonthlyLoanPayment'))
-
-    return df
-
-
 # Main ETL function
 def run_etl():
     # Extract
-    raw_data = extract_data("your-s3-bucket", "loan_data.csv")
+    raw_data = Extractor.extract_data("your-s3-bucket", "loan_data.csv")
 
     # Transform
-    cleaned_data = clean_data(raw_data)
-    enriched_data = enrich_data(cleaned_data)
-    validated_data, loan_defaults, agg_metrics = aggregate_data(enriched_data)
-    final_data = validate_data(validated_data)
+    cleaned_data = Transformer.clean_data(raw_data)
+    enriched_data = Transformer.enrich_data(cleaned_data)
+    validated_data, loan_defaults, agg_metrics = Transformer.aggregate_data(enriched_data)
+    final_data = Transformer.validate_data(validated_data)
 
     # Load
-    load_to_s3(final_data, "your-output-s3-bucket", "processed_loan_data")
-    load_to_redshift(final_data, "processed_loan_data")
-    load_to_redshift(loan_defaults, "loan_defaults_summary")
-    load_to_redshift(agg_metrics, "loan_metrics_summary")
+    Loader.load_to_s3(final_data, "your-output-s3-bucket", "processed_loan_data")
+    Loader.load_to_redshift(final_data, "processed_loan_data")
+    Loader.load_to_redshift(loan_defaults, "loan_defaults_summary")
+    Loader.load_to_redshift(agg_metrics, "loan_metrics_summary")
 
 if __name__ == "__main__":
     run_etl()
