@@ -4,6 +4,8 @@
 This project aims to build an ETL pipeline that processes loan application data using PySpark, Docker, AWS, and Kubernetes for orchestration. The goal is to transform the underlying data to extract meaningful insights into credit risk models, which can be further used to assess loan approval likelihood.
 
 The dataset being used is the **Financial Risk for Loan Approval Dataset**, which contains information about applicants' financial and personal data.
+https://www.kaggle.com/datasets/lorenzozoppelletto/financial-risk-for-loan-approval/data
+
 
 ## ETL Pipeline Overview
 
@@ -57,3 +59,13 @@ The dataset being used is the **Financial Risk for Loan Approval Dataset**, whic
 ## Future Enhancements
 - Implement real-time risk score calculation using streaming data.
 - Expand the ETL pipeline to support multiple loan datasets or integrate external financial data sources for more comprehensive analysis.
+
+
+## Setup
+
+```bash
+chmod +x setup.sh
+./setup.sh
+aws configure
+docker build -t loan-approval-etl .
+```
