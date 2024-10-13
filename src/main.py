@@ -1,20 +1,30 @@
+import os
 from pyspark.sql.functions import col, when, datediff, current_date, year, lit, udf
 from pyspark.sql.types import StringType, FloatType
 import boto3
 from utils import spark
 
+# Load environment variables
+AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID')
+AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY')
+AWS_DEFAULT_REGION = os.environ.get('AWS_DEFAULT_REGION')
+S3_BUCKET_NAME = os.environ.get('S3_BUCKET_NAME')
+REDSHIFT_HOST = os.environ.get('REDSHIFT_HOST')
+REDSHIFT_PORT = os.environ.get('REDSHIFT_PORT')
+REDSHIFT_DATABASE = os.environ.get('REDSHIFT_DATABASE')
+REDSHIFT_USER = os.environ.get('REDSHIFT_USER')
+REDSHIFT_PASSWORD = os.environ.get('REDSHIFT_PASSWORD')
+
+
 class Extractor:
-    def __init__(self):
-        pass
+    @staticmethod
+    def extract_data_from_s3(file_name):
+        # Set up AWS credentials
+        spark.sparkContext._jsc.hadoopConfiguration().set("fs.s3a.access.key", AWS_ACCESS_KEY_ID)
+        spark.sparkContext._jsc.hadoopConfiguration().set("fs.s3a.secret.key", AWS_SECRET_ACCESS_KEY)
+        spark.sparkContext._jsc.hadoopConfiguration().set("fs.s3a.endpoint", f"s3.{AWS_DEFAULT_REGION}.amazonaws.com")
 
-    def extract_data_from_local(self, file_path):
-        df = spark.read.csv(file_path, header=True, inferSchema=True)
-        return df
-
-    def extract_data_from_s3(self, bucket_name, file_name):
-        # Set up AWS credentials (make sure you've configured AWS CLI)
-        spark.sparkContext._jsc.hadoopConfiguration().set("fs.s3a.aws.credentials.provider", "com.amazonaws.auth.DefaultAWSCredentialsProviderChain")
-        df = spark.read.csv(f"s3a://{bucket_name}/{file_name}", header=True, inferSchema=True)
+        df = spark.read.csv(f"s3a://{S3_BUCKET_NAME}/{file_name}", header=True, inferSchema=True)
         return df
 
 class Transformer:
@@ -103,19 +113,16 @@ class Transformer:
 
 
 class Loader:
-    def __init__(self):
-        pass
+    @staticmethod
+    def load_to_s3(df, file_name):
+        df.write.parquet(f"s3a://{S3_BUCKET_NAME}/{file_name}", mode="overwrite")
 
-    def load_to_s3(self, df, bucket_name, file_name):
-        df.write.parquet(f"s3a://{bucket_name}/{file_name}", mode="overwrite")
-
-    def load_to_redshift(self, df, table_name):
-
-        # You'll need to set up the Redshift connection properties
+    @staticmethod
+    def load_to_redshift(df, table_name):
         redshift_properties = {
-            "url": "jdbc:redshift://your-redshift-cluster:5439/dev",
-            "user": "your_username",
-            "password": "your_password",
+            "url": f"jdbc:redshift://{REDSHIFT_HOST}:{REDSHIFT_PORT}/{REDSHIFT_DATABASE}",
+            "user": REDSHIFT_USER,
+            "password": REDSHIFT_PASSWORD,
             "driver": "com.amazon.redshift.jdbc42.Driver"
         }
 
@@ -129,20 +136,20 @@ class Loader:
             .mode("overwrite") \
             .save()
 
-
 # Main ETL function
 def run_etl():
     # Extract
-    raw_data = Extractor.extract_data("your-s3-bucket", "loan_data.csv")
+    raw_data = Extractor.extract_data_from_s3("loan_data.csv")
 
     # Transform
-    cleaned_data = Transformer.clean_data(raw_data)
-    enriched_data = Transformer.enrich_data(cleaned_data)
-    validated_data, loan_defaults, agg_metrics = Transformer.aggregate_data(enriched_data)
-    final_data = Transformer.validate_data(validated_data)
+    transformer = Transformer()
+    cleaned_data = transformer.clean_data(raw_data)
+    enriched_data = transformer.enrich_data(cleaned_data)
+    validated_data, loan_defaults, agg_metrics = transformer.aggregate_data(enriched_data)
+    final_data = transformer.validate_data(validated_data)
 
     # Load
-    Loader.load_to_s3(final_data, "your-output-s3-bucket", "processed_loan_data")
+    Loader.load_to_s3(final_data, "processed_loan_data")
     Loader.load_to_redshift(final_data, "processed_loan_data")
     Loader.load_to_redshift(loan_defaults, "loan_defaults_summary")
     Loader.load_to_redshift(agg_metrics, "loan_metrics_summary")
