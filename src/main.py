@@ -1,4 +1,5 @@
 import os
+from pyspark.sql import DataFrame
 from pyspark.sql.functions import col, when, datediff, current_date, year, lit, udf
 from pyspark.sql.types import StringType, FloatType
 import boto3
@@ -18,7 +19,16 @@ REDSHIFT_PASSWORD = os.environ.get('REDSHIFT_PASSWORD')
 
 class Extractor:
     @staticmethod
-    def extract_data_from_s3(file_name):
+    def extract_data_from_s3(file_name: str) -> DataFrame:
+        """
+        Extract data from S3 bucket.
+
+        Args:
+            file_name (str): Name of the file to extract from S3.
+
+        Returns:
+            DataFrame: Spark DataFrame containing the extracted data.
+        """
         # Set up AWS credentials
         spark.sparkContext._jsc.hadoopConfiguration().set("fs.s3a.access.key", AWS_ACCESS_KEY_ID)
         spark.sparkContext._jsc.hadoopConfiguration().set("fs.s3a.secret.key", AWS_SECRET_ACCESS_KEY)
@@ -27,12 +37,22 @@ class Extractor:
         df = spark.read.csv(f"s3a://{S3_BUCKET_NAME}/{file_name}", header=True, inferSchema=True)
         return df
 
+
+
 class Transformer:
     def __init__(self):
         pass
 
-    def clean_data(self, df):
+    def clean_data(self, df: DataFrame) -> DataFrame:
+        """
+        Clean the input DataFrame by handling missing values and converting date.
 
+        Args:
+            df (DataFrame): Input Spark DataFrame.
+
+        Returns:
+            DataFrame: Cleaned Spark DataFrame.
+        """
         # Handle missing values
         df = df.na.fill({
             'CreditScore': df.select('CreditScore').summary().collect()[1]['CreditScore'],
@@ -47,7 +67,16 @@ class Transformer:
 
         return df
 
-    def enrich_data(self, df):
+    def enrich_data(self, df: DataFrame) -> DataFrame:
+        """
+        Enrich the input DataFrame with additional features.
+
+        Args:
+            df (DataFrame): Input Spark DataFrame.
+
+        Returns:
+            DataFrame: Enriched Spark DataFrame.
+        """
         # Create Age Groups
         df = df.withColumn('AgeGroup',
             when(col('Age') < 31, '18-30')
@@ -77,8 +106,17 @@ class Transformer:
 
         return df
 
-    def aggregate_data(self, df):
+    def aggregate_data(self, df: DataFrame) -> tuple[DataFrame, DataFrame, DataFrame]:
+        """
+        Aggregate the input DataFrame and create summary DataFrames.
 
+        Args:
+            df (DataFrame): Input Spark DataFrame.
+
+        Returns:
+            tuple[DataFrame, DataFrame, DataFrame]: Tuple containing the main DataFrame,
+            loan defaults summary, and aggregate metrics.
+        """
         # Create Risk Buckets
         df = df.withColumn('RiskBucket',
             when(col('RiskScore') >= 80, 'Low Risk')
@@ -99,7 +137,16 @@ class Transformer:
 
         return df, loan_defaults, agg_metrics
 
-    def validate_data(self, df):
+    def validate_data(self, df: DataFrame) -> DataFrame:
+        """
+        Validate the input DataFrame by adding flag columns.
+
+        Args:
+            df (DataFrame): Input Spark DataFrame.
+
+        Returns:
+            DataFrame: Validated Spark DataFrame with additional flag columns.
+        """
         # Flag high DebtToIncomeRatio and LoanToIncomeRatio
         df = df.withColumn('HighDebtToIncomeRatio', col('DebtToIncomeRatio') > 0.5)
         df = df.withColumn('HighLoanToIncomeRatio', col('LoanToIncomeRatio') > 0.5)
@@ -114,11 +161,25 @@ class Transformer:
 
 class Loader:
     @staticmethod
-    def load_to_s3(df, file_name):
+    def load_to_s3(df: DataFrame, file_name: str) -> None:
+        """
+        Load DataFrame to S3 bucket.
+
+        Args:
+            df (DataFrame): Spark DataFrame to be loaded.
+            file_name (str): Name of the file to be created in S3.
+        """
         df.write.parquet(f"s3a://{S3_BUCKET_NAME}/{file_name}", mode="overwrite")
 
     @staticmethod
-    def load_to_redshift(df, table_name):
+    def load_to_redshift(df: DataFrame, table_name: str) -> None:
+        """
+        Load DataFrame to Redshift.
+
+        Args:
+            df (DataFrame): Spark DataFrame to be loaded.
+            table_name (str): Name of the table to be created or overwritten in Redshift.
+        """
         redshift_properties = {
             "url": f"jdbc:redshift://{REDSHIFT_HOST}:{REDSHIFT_PORT}/{REDSHIFT_DATABASE}",
             "user": REDSHIFT_USER,
@@ -137,9 +198,13 @@ class Loader:
             .save()
 
 # Main ETL function
-def run_etl():
+def run_etl() -> None:
+    """
+    Main ETL function to extract, transform, and load data.
+    """
     # Extract
-    raw_data = Extractor.extract_data_from_s3("loan_data.csv")
+    extractor = Extractor()
+    raw_data = extractor.extract_data_from_s3("loan_data.csv")
 
     # Transform
     transformer = Transformer()
@@ -149,10 +214,11 @@ def run_etl():
     final_data = transformer.validate_data(validated_data)
 
     # Load
-    Loader.load_to_s3(final_data, "processed_loan_data")
-    Loader.load_to_redshift(final_data, "processed_loan_data")
-    Loader.load_to_redshift(loan_defaults, "loan_defaults_summary")
-    Loader.load_to_redshift(agg_metrics, "loan_metrics_summary")
+    loader = Loader()
+    loader.load_to_s3(final_data, "processed_loan_data")
+    loader.load_to_redshift(final_data, "processed_loan_data")
+    loader.load_to_redshift(loan_defaults, "loan_defaults_summary")
+    loader.load_to_redshift(agg_metrics, "loan_metrics_summary")
 
 if __name__ == "__main__":
     run_etl()
