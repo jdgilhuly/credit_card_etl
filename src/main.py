@@ -18,6 +18,13 @@ REDSHIFT_PASSWORD = os.environ.get('REDSHIFT_PASSWORD')
 
 
 class Extractor:
+
+    @staticmethod
+    def extract_data_from_local(file_path) -> DataFrame:
+        df = spark.read.csv(file_path, header=True, inferSchema=True)
+        return df
+
+
     @staticmethod
     def extract_data_from_s3(file_name: str) -> DataFrame:
         """
@@ -204,7 +211,7 @@ def run_etl() -> None:
     """
     # Extract
     extractor = Extractor()
-    raw_data = extractor.extract_data_from_s3("loan_data.csv")
+    raw_data = extractor.extract_data_from_local("data/Loan.csv")
 
     # Transform
     transformer = Transformer()
@@ -212,13 +219,14 @@ def run_etl() -> None:
     enriched_data = transformer.enrich_data(cleaned_data)
     validated_data, loan_defaults, agg_metrics = transformer.aggregate_data(enriched_data)
     final_data = transformer.validate_data(validated_data)
+    final_data.show(4)
 
     # Load
-    loader = Loader()
-    loader.load_to_s3(final_data, "processed_loan_data")
-    loader.load_to_redshift(final_data, "processed_loan_data")
-    loader.load_to_redshift(loan_defaults, "loan_defaults_summary")
-    loader.load_to_redshift(agg_metrics, "loan_metrics_summary")
+    # loader = Loader()
+    # loader.load_to_s3(final_data, "processed_loan_data")
+    # loader.load_to_redshift(final_data, "processed_loan_data")
+    # loader.load_to_redshift(loan_defaults, "loan_defaults_summary")
+    # loader.load_to_redshift(agg_metrics, "loan_metrics_summary")
 
 if __name__ == "__main__":
     run_etl()
