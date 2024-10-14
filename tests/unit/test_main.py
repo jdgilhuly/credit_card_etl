@@ -2,6 +2,8 @@ import pytest
 from pyspark.sql import SparkSession
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType, FloatType, DateType
 from src.main import Extractor, Transformer, Loader
+import datetime
+import os
 
 @pytest.fixture(scope="module")
 def spark():
@@ -26,9 +28,9 @@ def sample_data(spark):
     ])
 
     data = [
-        ("APP001", 700, 50000.0, 10000.0, "Employed", "Bachelor", 30, 20000.0, 100000.0, 0.2, 0, 36, "2023-01-01"),
-        ("APP002", 650, 40000.0, 15000.0, "Self-employed", "Master", 45, 30000.0, 80000.0, 0.5, 1, 48, "2023-01-02"),
-        ("APP003", None, None, None, None, None, 55, 40000.0, 120000.0, 0.8, 2, 60, "2023-01-03")
+        ("APP001", 700, 50000.0, 10000.0, "Employed", "Bachelor", 30, 20000.0, 100000.0, 0.2, 0, 36, datetime.date(2023, 1, 1)),
+        ("APP002", 650, 40000.0, 15000.0, "Self-employed", "Master", 45, 30000.0, 80000.0, 0.5, 1, 48, datetime.date(2023, 1, 2)),
+        ("APP003", None, None, None, None, None, 55, 40000.0, 120000.0, 0.8, 2, 60, datetime.date(2023, 1, 3))
     ]
 
     return spark.createDataFrame(data, schema)
@@ -90,15 +92,27 @@ def test_transformer_validate_data(sample_data):
     assert "LoanAmountConsistent" in validated_data.columns
 
 def test_loader_s3(spark, mocker):
+    # Mock environment variable
+    mocker.patch.dict(os.environ, {'S3_BUCKET_NAME': 'test_bucket'})
+
     mock_df = mocker.Mock()
     mock_df.write.parquet = mocker.Mock()
 
     loader = Loader()
     loader.load_to_s3(mock_df, "test_file")
 
-    mock_df.write.parquet.assert_called_once_with("s3a://None/test_file", mode="overwrite")
+    mock_df.write.parquet.assert_called_once_with("s3a://test_bucket/test_file", mode="overwrite")
 
 def test_loader_redshift(spark, mocker):
+    # Mock environment variables
+    mocker.patch.dict(os.environ, {
+        'REDSHIFT_HOST': 'mock_host',
+        'REDSHIFT_PORT': 'mock_port',
+        'REDSHIFT_DATABASE': 'mock_db',
+        'REDSHIFT_USER': 'mock_user',
+        'REDSHIFT_PASSWORD': 'mock_password'
+    })
+
     mock_df = mocker.Mock()
     mock_df.write.format.return_value.option.return_value.option.return_value.option.return_value.option.return_value.option.return_value.mode.return_value.save = mocker.Mock()
 
@@ -106,10 +120,10 @@ def test_loader_redshift(spark, mocker):
     loader.load_to_redshift(mock_df, "test_table")
 
     mock_df.write.format.assert_called_once_with("jdbc")
-    mock_df.write.format().option.assert_called_with("url", "jdbc:redshift://None:None/None")
+    mock_df.write.format().option.assert_called_with("url", "jdbc:redshift://mock_host:mock_port/mock_db")
     mock_df.write.format().option().option.assert_called_with("dbtable", "test_table")
-    mock_df.write.format().option().option().option.assert_called_with("user", None)
-    mock_df.write.format().option().option().option().option.assert_called_with("password", None)
+    mock_df.write.format().option().option().option.assert_called_with("user", "mock_user")
+    mock_df.write.format().option().option().option().option.assert_called_with("password", "mock_password")
     mock_df.write.format().option().option().option().option().option.assert_called_with("driver", "com.amazon.redshift.jdbc42.Driver")
     mock_df.write.format().option().option().option().option().option().mode.assert_called_with("overwrite")
     mock_df.write.format().option().option().option().option().option().mode().save.assert_called_once()

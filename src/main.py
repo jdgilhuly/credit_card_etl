@@ -10,12 +10,6 @@ AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID')
 AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY')
 AWS_DEFAULT_REGION = os.environ.get('AWS_DEFAULT_REGION')
 S3_BUCKET_NAME = os.environ.get('S3_BUCKET_NAME')
-REDSHIFT_HOST = os.environ.get('REDSHIFT_HOST')
-REDSHIFT_PORT = os.environ.get('REDSHIFT_PORT')
-REDSHIFT_DATABASE = os.environ.get('REDSHIFT_DATABASE')
-REDSHIFT_USER = os.environ.get('REDSHIFT_USER')
-REDSHIFT_PASSWORD = os.environ.get('REDSHIFT_PASSWORD')
-
 
 class Extractor:
 
@@ -167,6 +161,9 @@ class Transformer:
 
 
 class Loader:
+    def __init__(self):
+        self.s3_bucket = os.environ.get('S3_BUCKET_NAME', 'default_bucket_name')
+
     @staticmethod
     def load_to_s3(df: DataFrame, file_name: str) -> None:
         """
@@ -176,31 +173,16 @@ class Loader:
             df (DataFrame): Spark DataFrame to be loaded.
             file_name (str): Name of the file to be created in S3.
         """
-        df.write.parquet(f"s3a://{S3_BUCKET_NAME}/{file_name}", mode="overwrite")
+        df.write.parquet(f"s3a://{self.s3_bucket}/{file_name}", mode="overwrite")
 
-    @staticmethod
-    def load_to_redshift(df: DataFrame, table_name: str) -> None:
-        """
-        Load DataFrame to Redshift.
-
-        Args:
-            df (DataFrame): Spark DataFrame to be loaded.
-            table_name (str): Name of the table to be created or overwritten in Redshift.
-        """
-        redshift_properties = {
-            "url": f"jdbc:redshift://{REDSHIFT_HOST}:{REDSHIFT_PORT}/{REDSHIFT_DATABASE}",
-            "user": REDSHIFT_USER,
-            "password": REDSHIFT_PASSWORD,
-            "driver": "com.amazon.redshift.jdbc42.Driver"
-        }
-
-        df.write \
-            .format("jdbc") \
-            .option("url", redshift_properties["url"]) \
+    def load_to_redshift(self, df, table_name):
+        jdbc_url = f"jdbc:redshift://{self.redshift_host}:{self.redshift_port}/{self.redshift_database}"
+        df.write.format("jdbc") \
+            .option("url", jdbc_url) \
             .option("dbtable", table_name) \
-            .option("user", redshift_properties["user"]) \
-            .option("password", redshift_properties["password"]) \
-            .option("driver", redshift_properties["driver"]) \
+            .option("user", self.redshift_user) \
+            .option("password", self.redshift_password) \
+            .option("driver", "com.amazon.redshift.jdbc42.Driver") \
             .mode("overwrite") \
             .save()
 
