@@ -39,6 +39,3 @@ pipenv install
 
 # Run your PySpark application
 pipenv run python3 src/main.py
-
-# Optional: Add logging
-exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
