@@ -87,6 +87,9 @@ class Transformer:
         # Calculate DebtToAssetRatio
         df = df.withColumn('DebtToAssetRatio', col('TotalLiabilities') / col('TotalAssets'))
 
+        # Calculate DebtToIncomeRatio
+        df = df.withColumn('DebtToIncomeRatio', col('TotalLiabilities') / col('AnnualIncome'))
+
         # Create CreditUtilizationRisk
         df = df.withColumn('CreditUtilizationRisk',
             when(col('CreditCardUtilizationRate') < 0.3, 'Low')
@@ -104,6 +107,9 @@ class Transformer:
             (col('CreditScore') * 0.4) +
             ((1 - col('DebtToIncomeRatio')) * 100 * 0.4) +
             ((5 - col('PreviousLoanDefaults')) * 20 * 0.2))
+
+        # Add MonthlyDebtPayments column if needed
+        df = df.withColumn('MonthlyDebtPayments', col('TotalLiabilities') / 12)  # This is just an example, adjust the calculation as needed
 
         return df
 
@@ -132,8 +138,7 @@ class Transformer:
 
         # Calculate aggregate metrics
         agg_metrics = df.groupBy('AgeGroup', 'EmploymentStatus', 'EducationLevel') \
-            .agg({'MonthlyDebtPayments': 'avg', 'LoanAmount': 'avg'}) \
-            .withColumnRenamed('avg(MonthlyDebtPayments)', 'AvgMonthlyDebtPayments') \
+            .agg({'LoanAmount': 'avg'}) \
             .withColumnRenamed('avg(LoanAmount)', 'AvgLoanAmount')
 
         return df, loan_defaults, agg_metrics
@@ -154,7 +159,7 @@ class Transformer:
 
         # Validate LoanAmount and MonthlyLoanPayment consistency
         df = df.withColumn('LoanAmountConsistent',
-            (col('LoanAmount') / col('LoanDuration')) >= col('MonthlyLoanPayment'))
+            (col('LoanAmount') / col('LoanDuration')) >= col('MonthlyDebtPayments'))
 
         return df
 
@@ -162,18 +167,15 @@ class Transformer:
 
 class Loader:
     def __init__(self):
-        self.s3_bucket = os.environ.get('S3_BUCKET_NAME', 'default_bucket_name')
+        self.s3_bucket = os.environ.get('S3_BUCKET_NAME')
+        self.redshift_host = os.environ.get('REDSHIFT_HOST')
+        self.redshift_port = os.environ.get('REDSHIFT_PORT')
+        self.redshift_database = os.environ.get('REDSHIFT_DATABASE')
+        self.redshift_user = os.environ.get('REDSHIFT_USER')
+        self.redshift_password = os.environ.get('REDSHIFT_PASSWORD')
 
-    @staticmethod
-    def load_to_s3(df: DataFrame, file_name: str) -> None:
-        """
-        Load DataFrame to S3 bucket.
-
-        Args:
-            df (DataFrame): Spark DataFrame to be loaded.
-            file_name (str): Name of the file to be created in S3.
-        """
-        df.write.parquet(f"s3a://{self.s3_bucket}/{file_name}", mode="overwrite")
+    def load_to_s3(self, df, file_name):
+        df.write.parquet(f"s3a://{os.environ.get('S3_BUCKET_NAME')}/{file_name}", mode="overwrite")
 
     def load_to_redshift(self, df, table_name):
         jdbc_url = f"jdbc:redshift://{self.redshift_host}:{self.redshift_port}/{self.redshift_database}"
