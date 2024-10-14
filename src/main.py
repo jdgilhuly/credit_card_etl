@@ -3,7 +3,7 @@ from pyspark.sql import DataFrame
 from pyspark.sql.functions import col, when, datediff, current_date, year, lit, udf
 from pyspark.sql.types import StringType, FloatType
 import boto3
-from utils import spark
+from .utils import spark
 
 # Load environment variables
 AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID')
