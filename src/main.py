@@ -31,9 +31,9 @@ class Extractor:
             DataFrame: Spark DataFrame containing the extracted data.
         """
         # Set up AWS credentials
-        spark.sparkContext._jsc.hadoopConfiguration().set("fs.s3a.access.key", AWS_ACCESS_KEY_ID)
-        spark.sparkContext._jsc.hadoopConfiguration().set("fs.s3a.secret.key", AWS_SECRET_ACCESS_KEY)
-        spark.sparkContext._jsc.hadoopConfiguration().set("fs.s3a.endpoint", f"s3.{AWS_DEFAULT_REGION}.amazonaws.com")
+        spark.sparkContext._jsc.hadoopConfiguration().set("fs.s3a.access.key", os.environ.get('AWS_ACCESS_KEY_ID'))
+        spark.sparkContext._jsc.hadoopConfiguration().set("fs.s3a.secret.key", os.environ.get('AWS_SECRET_ACCESS_KEY'))
+        spark.sparkContext._jsc.hadoopConfiguration().set("fs.s3a.endpoint", f"s3.{os.environ.get('AWS_DEFAULT_REGION')}.amazonaws.com")
 
         df = spark.read.csv(f"s3a://{S3_BUCKET_NAME}/{file_name}", header=True, inferSchema=True)
         return df
@@ -175,7 +175,7 @@ class Loader:
         self.redshift_password = os.environ.get('REDSHIFT_PASSWORD')
 
     def load_to_s3(self, df, file_name):
-        df.write.parquet(f"s3a://{os.environ.get('S3_BUCKET_NAME')}/{file_name}", mode="overwrite")
+        df.write.parquet(f"s3a://{self.s3_bucket)}/{file_name}", mode="overwrite")
 
     def load_to_redshift(self, df, table_name):
         jdbc_url = f"jdbc:redshift://{self.redshift_host}:{self.redshift_port}/{self.redshift_database}"
