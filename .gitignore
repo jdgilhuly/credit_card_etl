@@ -1,3 +1,5 @@
 # Environment variables
 .env
 
+# pycache for tests
+*/__pycache__/
