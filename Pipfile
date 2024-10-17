@@ -22,3 +22,4 @@ python_version = "3.10"
 
 [scripts]
 test = "python -m pytest tests"
+acceptance = "python -m pytest tests/acceptance"
