@@ -206,8 +206,8 @@ def run_etl() -> None:
     final_data.show(4)
 
     # Load
-    # loader = Loader()
-    # loader.load_to_s3(final_data, "processed_loan_data")
+    loader = Loader()
+    loader.load_to_s3(final_data, "processed_loan_data")
     # loader.load_to_redshift(final_data, "processed_loan_data")
     # loader.load_to_redshift(loan_defaults, "loan_defaults_summary")
     # loader.load_to_redshift(agg_metrics, "loan_metrics_summary")
